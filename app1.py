@@ -1,15 +1,15 @@
 import streamlit as st
-import os
 from streamlit_option_menu import option_menu
+from PIL import Image
 
-# Caminho do ícone
-image_path = os.path.join(os.path.dirname(__file__), "Imagem", "logo.jpeg")
+# Carregar imagem corretamente
+img = Image.open("Imagem/WhatsApp Image 2024-09-29 at 02.22.00.jpeg")
 
-# Configuração da página
-st.set_page_config(page_title="PYGEOPLOT", page_icon=image_path, layout="wide")
+# Configurar página
+st.set_page_config(page_title="PYGEOPLOT", page_icon=img, layout="wide")
 
-# Exibe a imagem no topo
-st.image(image_path, use_container_width=True, caption="PYGEOPLOT")
+# Mostrar logotipo
+st.image(img, use_container_width=True, caption="PYGEOPLOT")
 
 # Menu lateral
 with st.sidebar:
@@ -37,7 +37,7 @@ with st.sidebar:
         default_index=0,
     )
 
-# Importa e executa o módulo correspondente
+# Executar a página correspondente
 if escolha == "Importação":
     import importacao
     importacao.app()
