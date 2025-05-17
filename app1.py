@@ -2,9 +2,14 @@ import streamlit as st
 import os
 from streamlit_option_menu import option_menu
 
-# Configuração do ícone e título da aplicação
-image_path = os.path.join(os.path.dirname(__file__), "Imagem", "WhatsApp Image 2024-09-29 at 02.22.00.jpeg")
+# Caminho do ícone
+image_path = os.path.join(os.path.dirname(__file__), "Imagem", "logo.jpeg")
+
+# Configuração da página
 st.set_page_config(page_title="PYGEOPLOT", page_icon=image_path, layout="wide")
+
+# Exibe a imagem no topo
+st.image(image_path, use_container_width=True, caption="PYGEOPLOT")
 
 # Menu lateral
 with st.sidebar:
@@ -30,26 +35,24 @@ with st.sidebar:
         ],
         menu_icon="cast",
         default_index=0,
-        orientation="vertical",
     )
-    st.image(image_path, use_column_width=True, caption="PYGEOPLOT")
 
-# Navegação entre páginas
+# Importa e executa o módulo correspondente
 if escolha == "Importação":
     import importacao
     importacao.app()
 
 elif escolha == "Visualização":
-    import Plotagem
-    Plotagem.app()
+    import visualizacao
+    visualizacao.app()
 
 elif escolha == "Estatísticas":
     import estatistica
     estatistica.app()
 
 elif escolha == "Classificação Litológica":
-    import litofaceis
-    litofaceis.app()
+    import classificacao
+    classificacao.app()
 
 elif escolha == "Cálculo Petrofísico":
     import calculopetrofisico
@@ -60,5 +63,5 @@ elif escolha == "Conversão de Dados":
     conversao.app()
 
 elif escolha == "Autor do Aplicativo":
-    import autores
-    autores.app()
+    import autor
+    autor.app()
