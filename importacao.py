@@ -16,13 +16,8 @@ def load_las_data(uploaded_file):
         df = las.df()
         df.insert(0, "DEPTH", las.index)  # Adiciona a profundidade
 
-        # ✅ Remover linhas com dados ausentes
-        linhas_antes = len(df)
+        # ✅ Remover linhas com dados ausentes sem exibir mensagem
         df.dropna(inplace=True)
-        linhas_depois = len(df)
-        linhas_removidas = linhas_antes - linhas_depois
-        if linhas_removidas > 0:
-            st.warning(f"{linhas_removidas} linhas com dados ausentes foram removidas automaticamente.")
 
         return las, df
     except Exception as e:
@@ -57,7 +52,7 @@ def display_curve_info(las):
         st.markdown(f'<p class="las-format">{mnem}{unit}: {description}</p>', unsafe_allow_html=True)
 
 def app():
-    st.title("📥 Importação de Arquivo LAS")
+    st.title(" Importação de Arquivo LAS")
 
     uploaded_file = st.file_uploader("Selecione um arquivo LAS", type=['las'])
 
