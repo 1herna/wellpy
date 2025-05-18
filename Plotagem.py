@@ -75,7 +75,6 @@ def plot_well_logs(df):
     figura_altura = min(50, max(20, int((profundidade_total / 100) * altura_por_100m)))
 
     if len(df) > 8000:
-        st.warning("Amostragem automática aplicada para evitar estouro de memória.")
         df = df.iloc[::len(df)//5000]
 
     logs = df[(df[depth_col] >= top_depth) & (df[depth_col] <= bottom_depth)]
@@ -83,18 +82,19 @@ def plot_well_logs(df):
     valid_tracks = {k: v for k, v in tracks.items() if v}
     n_tracks = len(valid_tracks)
 
-    fig, axes = plt.subplots(1, n_tracks, figsize=(min(5.5 * n_tracks, 60), figura_altura), sharey=True, dpi=80)
+    fig, axes = plt.subplots(1, n_tracks, figsize=(min(7 * n_tracks, 70), figura_altura), sharey=True, dpi=100)
     if n_tracks == 1:
         axes = [axes]
-    fig.subplots_adjust(top=0.92, wspace=0.5)
+    fig.subplots_adjust(top=0.9, wspace=0.4)
 
     for i, (_, curvas) in enumerate(valid_tracks.items()):
         ax = axes[i]
         ax.set_ylim(top_depth, bottom_depth)
         ax.invert_yaxis()
         ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.5)
-        ax.tick_params(axis='y', labelsize=14)
+        ax.tick_params(axis='y', labelsize=27)
 
+        offset_base = 1.05
         for j, curva_info in enumerate(curvas):
             curva = curva_info["mnemonic"]
             unidade = curva_info["unit"]
@@ -103,19 +103,20 @@ def plot_well_logs(df):
 
             color = plt.cm.tab10(j % 10)
             ax2 = ax.twiny()
-            ax2.spines.top.set_position(('axes', 1 + 0.05 * j))
+            ax2.spines.top.set_position(('axes', offset_base))
             ax2.set_ylim(top_depth, bottom_depth)
             ax2.invert_yaxis()
 
             if any(k in curva.upper() for k in ['RES', 'ILD', 'ILM', 'LLD', 'LLS']):
                 ax2.set_xscale('log')
 
-            ax2.plot(logs[curva], logs[depth_col], color=color, linewidth=1.5)
-            ax2.set_xlabel(f"{curva} [{unidade}]", color=color, fontsize=12)
-            ax2.tick_params(axis='x', colors=color, labelsize=10)
+            ax2.plot(logs[curva], logs[depth_col], color=color, linewidth=2.5)
+            ax2.set_xlabel(f"{curva} [{unidade}]", color=color, fontsize=27, labelpad=20)
+            ax2.tick_params(axis='x', colors=color, labelsize=27, pad=12, width=2)
+            offset_base += 0.12
 
         if i == 0:
-            ax.set_ylabel("Profundidade (m)", fontsize=16)
+            ax.set_ylabel("Profundidade (m)", fontsize=27)
 
     try:
         st.pyplot(fig)
