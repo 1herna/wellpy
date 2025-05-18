@@ -69,7 +69,7 @@ def calcular_parametros_petrofisicos(data, curvas, params):
 
 # Página do cálculo petrofísico
 def app():
-    st.title("🧮 Cálculo Petrofísico")
+    st.title("🧮 Cálculo Petrofísico com Fórmulas do Livro")
 
     if 'well_data' not in st.session_state or 'las_object' not in st.session_state:
         st.error("Vá para a aba de Importação e carregue um arquivo LAS primeiro.")
@@ -99,7 +99,7 @@ def app():
     altura_por_100m = 2.5
     figura_altura = min(200, max(10, int((profundidade_total / 100) * altura_por_100m)))
 
-    fig, axes = plt.subplots(ncols=6, figsize=(26, figura_altura), sharey=True)
+    fig, axes = plt.subplots(ncols=6, figsize=(36, figura_altura + 6), sharey=False)
     depth = data[col_depth]
 
     unidades = {
@@ -129,10 +129,10 @@ def app():
             ax.plot(data[col], depth, color=color, linewidth=1.2)
             ax.spines['top'].set_position(('outward', 0))
             ax.set_xlabel(f"{col} [{unidades[col]}]", color='black')
-            ax.tick_params(axis='x', colors='black')
+        
         else:
-            ax.text(0.5, 0.5, f"{col} ausente", horizontalalignment='center',
-                    verticalalignment='center', transform=ax.transAxes)
+            ax.set_yticklabels([])
+            # # ax.invert_yaxis()  # removido para manter profundidade crescente  # profundidade agora em ordem crescente
         ax.grid(True, linestyle='--', alpha=0.6)
         if i == 0:
             ax.set_ylabel("Profundidade (m)", fontsize=12)
@@ -141,23 +141,15 @@ def app():
         ax.invert_yaxis()
         ax.xaxis.set_label_position('top')
         ax.xaxis.tick_top()
-        ax.tick_params(labelsize=10)
+        ax.tick_params(labelsize=27)
+        ax.xaxis.label.set_size(27)
+        ax.yaxis.label.set_size(27)
+        ax.title.set_size(27)
 
     st.pyplot(fig)
 
-    import seaborn as sns  # manter apenas seaborn aqui
 
-    st.subheader("📈 Histogramas dos Parâmetros Petrofísicos")
-    import seaborn as sns
-    parametros_plot = ['Vcl', 'PHIE', 'Sw', 'So', 'K', 'BVW']
-    fig_hist, axes_hist = plt.subplots(2, 3, figsize=(18, 10))
-    axes_hist = axes_hist.flatten()
-    for i, param in enumerate(parametros_plot):
-        sns.histplot(data[param], ax=axes_hist[i], kde=True, color='skyblue', edgecolor='black')
-        axes_hist[i].set_title(f'Histograma de {param}')
-        axes_hist[i].set_xlabel(param)
-        axes_hist[i].set_ylabel('Frequência')
-    st.pyplot(fig_hist)
 
-    st.subheader("📊 Estatísticas Descritivas dos Parâmetros Petrofísicos")
-    st.dataframe(data[parametros_plot].describe().T.round(4))
+    
+
+    
