@@ -1,12 +1,12 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 from sklearn.utils import resample
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import seaborn as sns
 
 def get_depth_column(data):
     for col in ['DEPTH', 'DEPT', 'MD']:
@@ -15,111 +15,261 @@ def get_depth_column(data):
     return None
 
 def app():
-    st.title('Classificação Litológica por Eletrofácies')
-
-    st.markdown("""
-    ### 🧠 Sobre a Classificação Litológica por Eletrofácies
-
-    Este módulo realiza uma **classificação automática da litologia** com base nos perfis geofísicos (como gama-ray), utilizando o algoritmo de **K-Means**, que é um método de **agrupamento não supervisionado**.
-
-    O K-Means agrupa os dados em **zonas com características semelhantes**, chamadas aqui de **litofácies**. Isso é especialmente útil quando **não se tem rótulos verdadeiros** (ex: nomes de litologias reais), permitindo a **identificação de padrões escondidos** nos dados.
-
-    O número de grupos (clusters) é determinado automaticamente com base na **métrica de Silhouette Score**, que avalia a qualidade da separação dos dados.
-
-    O resultado é apresentado na forma de uma **coluna litológica vertical**, semelhante às utilizadas em softwares como Techlog ou Strater.
-
-    ⚠️ Importante: esta é uma **classificação estatística** e **não substitui uma interpretação geológica** — mas serve como ferramenta exploratória poderosa.
-    """)
-
     # Verificação dos dados
     if 'well_data' not in st.session_state:
         st.warning("⚠️ Nenhum dado carregado. Vá até a aba de Importação.")
         return
 
     data = st.session_state['well_data']
-
-    # Detectar a coluna de profundidade
     depth_col = get_depth_column(data)
+
     if not depth_col:
         st.error("❌ Coluna de profundidade não encontrada.")
         return
-    st.success(f"📏 Coluna de profundidade identificada: `{depth_col}`")
 
-    # Seleção da curva
     colunas_disponiveis = [col for col in data.columns if col != depth_col]
     if not colunas_disponiveis:
         st.warning("Nenhuma curva disponível para classificação.")
         return
 
-    log_col = st.selectbox("Selecione a curva para classificar:", colunas_disponiveis)
+    # Controles na sidebar
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("⚙️ Configurações")
 
-    # Limpar dados sem alterar o original
-    data_clean = data.dropna(subset=[log_col]).copy()
-    if len(data_clean) < 2:
-        st.warning("Poucos dados disponíveis após limpeza.")
+        # Seleção de curvas
+        st.markdown("**Curvas para Classificação:**")
+        selected_curves = st.multiselect(
+            "Selecione uma ou mais curvas",
+            colunas_disponiveis,
+            default=[colunas_disponiveis[0]] if colunas_disponiveis else [],
+            label_visibility="collapsed"
+        )
+
+        # Método de classificação
+        metodo = st.radio(
+            "**Método:**",
+            ["Automático (Silhouette)", "Manual (K clusters)"],
+            index=0
+        )
+
+        if metodo == "Manual (K clusters)":
+            n_clusters = st.slider("Número de Clusters", 2, 8, 3)
+        else:
+            n_clusters = None
+
+        # Intervalo de profundidade
+        st.markdown("**Intervalo de Profundidade:**")
+        min_depth = float(data[depth_col].min())
+        max_depth = float(data[depth_col].max())
+
+        depth_range = st.slider(
+            "Range (m)",
+            min_value=min_depth,
+            max_value=max_depth,
+            value=(min_depth, max_depth),
+            label_visibility="collapsed"
+        )
+
+        st.markdown("---")
+        st.info("💡 **Dica:** Use múltiplas curvas para classificação mais robusta")
+
+    # Área principal
+    st.title('🔬 Classificação Litológica por Eletrofácies')
+
+    # Descrição compacta
+    with st.expander("ℹ️ Sobre a Classificação", expanded=False):
+        st.markdown("""
+        Este módulo realiza **classificação automática da litologia** usando **K-Means clustering**.
+
+        - 🎯 Agrupa dados com características semelhantes
+        - 📊 Identifica padrões em perfis geofísicos
+        - 🧮 Usa Silhouette Score para otimização automática
+        - ⚠️ É uma classificação estatística, não substitui interpretação geológica
+        """)
+
+    if not selected_curves:
+        st.info("📌 Selecione pelo menos uma curva na sidebar para começar a classificação")
         return
 
-    X = data_clean[[log_col]].values
+    # Filtrar por profundidade
+    data_filtered = data[(data[depth_col] >= depth_range[0]) & (data[depth_col] <= depth_range[1])].copy()
+
+    # Limpar dados
+    data_clean = data_filtered.dropna(subset=selected_curves).copy()
+    if len(data_clean) < 10:
+        st.warning("⚠️ Poucos dados disponíveis. Ajuste o intervalo de profundidade.")
+        return
+
+    # Preparar dados para clustering
+    X = data_clean[selected_curves].values
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # Determinar melhor número de clusters usando amostragem
-    melhor_k, melhor_score, melhor_kmeans = 2, -1, None
-    for k in range(2, 8):
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        labels = kmeans.fit_predict(X_scaled)
-        amostra_X, amostra_labels = resample(X_scaled, labels, n_samples=min(1000, len(X_scaled)), random_state=42)
-        score = silhouette_score(amostra_X, amostra_labels)
-        if score > melhor_score:
-            melhor_k, melhor_score, melhor_kmeans = k, score, kmeans
+    # Determinar número de clusters
+    if metodo == "Automático (Silhouette)":
+        melhor_k, melhor_score, melhor_kmeans = 2, -1, None
+        scores = []
 
-    st.info(f"🔢 Clusters ideais: **{melhor_k}** (Silhouette Score estimado: {melhor_score:.3f})")
+        for k in range(2, 8):
+            kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+            labels = kmeans.fit_predict(X_scaled)
+            amostra_size = min(1000, len(X_scaled))
+            amostra_X, amostra_labels = resample(X_scaled, labels, n_samples=amostra_size, random_state=42)
+            score = silhouette_score(amostra_X, amostra_labels)
+            scores.append({'k': k, 'score': score})
 
-    # Aplicar modelo final
+            if score > melhor_score:
+                melhor_k, melhor_score, melhor_kmeans = k, score, kmeans
+
+        st.success(f"✅ Clusters ideais: **{melhor_k}** | Silhouette Score: **{melhor_score:.3f}**")
+
+        # Gráfico de Silhouette Score
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            fig_sil, ax_sil = plt.subplots(figsize=(6, 4))
+            k_values = [s['k'] for s in scores]
+            score_values = [s['score'] for s in scores]
+            ax_sil.plot(k_values, score_values, 'o-', color='#02ab21', linewidth=2, markersize=8)
+            ax_sil.axvline(melhor_k, color='red', linestyle='--', label=f'Melhor K={melhor_k}')
+            ax_sil.set_xlabel('Número de Clusters', fontweight='bold')
+            ax_sil.set_ylabel('Silhouette Score', fontweight='bold')
+            ax_sil.set_title('Otimização de Clusters', fontweight='bold')
+            ax_sil.grid(True, alpha=0.3)
+            ax_sil.legend()
+            st.pyplot(fig_sil)
+    else:
+        melhor_k = n_clusters
+        melhor_kmeans = KMeans(n_clusters=melhor_k, random_state=42, n_init=10)
+        melhor_kmeans.fit(X_scaled)
+        st.info(f"🔧 Usando **{melhor_k} clusters** (modo manual)")
+
+    # Aplicar classificação
     data_clean['Cluster'] = melhor_kmeans.predict(X_scaled)
     data_clean['Litologia'] = data_clean['Cluster'].apply(lambda x: f"Litofácies {x+1}")
 
-    # Cores para as litologias
-    cores_disponiveis = ['#FFD700', '#8B4513', '#D3D3D3', '#98FB98', '#1E90FF', '#FF6347', '#9932CC']
+    # Cores
+    cores_disponiveis = ['#FFD700', '#8B4513', '#87CEEB', '#98FB98', '#FF6347', '#9932CC', '#FFA500']
     litologias = sorted(data_clean['Litologia'].unique())
     cores = {lit: cores_disponiveis[i % len(cores_disponiveis)] for i, lit in enumerate(litologias)}
 
-    # Agrupar intervalos contínuos
-    intervalos = []
-    prev_lit = data_clean['Litologia'].iloc[0]
-    start_depth = data_clean[depth_col].iloc[0]
+    # Visualizações
+    st.markdown("---")
+    st.subheader("📊 Resultados da Classificação")
 
-    for i in range(1, len(data_clean)):
-        curr_lit = data_clean['Litologia'].iloc[i]
-        curr_depth = data_clean[depth_col].iloc[i]
-        if curr_lit != prev_lit:
-            intervalos.append({'topo': start_depth, 'base': curr_depth, 'litologia': prev_lit})
-            start_depth = curr_depth
-            prev_lit = curr_lit
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Litofácies Identificadas", len(litologias))
+    with col2:
+        st.metric("Amostras Classificadas", len(data_clean))
+    with col3:
+        st.metric("Curvas Utilizadas", len(selected_curves))
 
-    intervalos.append({
-        'topo': start_depth,
-        'base': data_clean[depth_col].iloc[-1],
-        'litologia': prev_lit
-    })
+    # Layout de visualização
+    if len(selected_curves) == 1:
+        col_left, col_right = st.columns([2, 1])
+    else:
+        col_left, col_right = st.columns([3, 1])
 
-    # Plotagem da coluna litológica
-    st.subheader("📊 Coluna Litológica")
-    fig, ax = plt.subplots(figsize=(3, 15))
-    for intervalo in intervalos:
-        topo = intervalo['topo']
-        base = intervalo['base']
-        lit = intervalo['litologia']
-        if lit not in cores:
-            cores[lit] = '#E0E0E0'  # Cor clara padrão
-        cor = cores[lit]
-        altura = base - topo
-        bloco = patches.Rectangle((0, topo), 1, altura, facecolor=cor, edgecolor='black')
-        ax.add_patch(bloco)
+    with col_left:
+        # Gráfico interativo com Plotly
+        fig = make_subplots(
+            rows=1, cols=len(selected_curves) + 1,
+            shared_yaxes=True,
+            subplot_titles=selected_curves + ['Litologia'],
+            horizontal_spacing=0.05,
+            column_widths=[1]*len(selected_curves) + [0.3]
+        )
 
-    ax.set_ylim(data_clean[depth_col].max(), data_clean[depth_col].min())
-    ax.set_xlim(0, 1)
-    ax.set_xticks([])
-    ax.set_ylabel("Profundidade (m)")
-    ax.set_title("Coluna Litológica")
-    st.pyplot(fig, clear_figure=True)
+        # Plotar curvas
+        colors_curves = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+        for i, curve in enumerate(selected_curves):
+            fig.add_trace(
+                go.Scatter(
+                    x=data_clean[curve],
+                    y=data_clean[depth_col],
+                    mode='lines',
+                    name=curve,
+                    line=dict(color=colors_curves[i % len(colors_curves)], width=1.5),
+                    hovertemplate=f'<b>{curve}</b><br>%{{x:.2f}}<br>Depth: %{{y:.2f}}<extra></extra>'
+                ),
+                row=1, col=i+1
+            )
+            fig.update_xaxes(title_text=curve, row=1, col=i+1)
+
+        # Plotar coluna litológica
+        for litologia in litologias:
+            lito_data = data_clean[data_clean['Litologia'] == litologia]
+            fig.add_trace(
+                go.Scatter(
+                    x=[1]*len(lito_data),
+                    y=lito_data[depth_col],
+                    mode='markers',
+                    name=litologia,
+                    marker=dict(
+                        color=cores[litologia],
+                        size=20,
+                        symbol='square',
+                        line=dict(color='black', width=0.5)
+                    ),
+                    hovertemplate=f'<b>{litologia}</b><br>Depth: %{{y:.2f}}<extra></extra>'
+                ),
+                row=1, col=len(selected_curves)+1
+            )
+
+        fig.update_yaxes(title_text="Profundidade (m)", autorange="reversed", row=1, col=1)
+        fig.update_xaxes(showticklabels=False, row=1, col=len(selected_curves)+1)
+
+        fig.update_layout(
+            height=700,
+            showlegend=True,
+            plot_bgcolor='white',
+            hovermode='y unified',
+            legend=dict(x=1.05, y=1)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col_right:
+        # Estatísticas por litofácies
+        st.markdown("**📈 Estatísticas:**")
+        for lit in litologias:
+            lito_data = data_clean[data_clean['Litologia'] == lit]
+            percentual = (len(lito_data) / len(data_clean)) * 100
+
+            st.markdown(f"""
+            <div style='background-color: {cores[lit]}; padding: 8px; border-radius: 5px; margin-bottom: 8px; border: 1px solid black;'>
+                <b>{lit}</b><br>
+                <small>{percentual:.1f}% ({len(lito_data)} amostras)</small>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Análise por curva (se múltiplas)
+    if len(selected_curves) > 1:
+        st.markdown("---")
+        st.subheader("🎯 Análise Multivariada")
+
+        # Pairplot
+        pairplot_data = data_clean[selected_curves + ['Litologia']].copy()
+
+        sns.set_style("whitegrid")
+        pairplot_fig = sns.pairplot(
+            pairplot_data,
+            hue='Litologia',
+            palette=cores,
+            diag_kind='kde',
+            plot_kws={'alpha': 0.6, 's': 20, 'edgecolor': 'black', 'linewidth': 0.3},
+            diag_kws={'alpha': 0.7, 'linewidth': 2}
+        )
+        pairplot_fig.figure.suptitle('Matriz de Correlação entre Curvas', y=1.01, fontweight='bold')
+        st.pyplot(pairplot_fig)
+
+    # Opção de download
+    st.markdown("---")
+    csv = data_clean[[depth_col] + selected_curves + ['Litologia']].to_csv(index=False)
+    st.download_button(
+        label="📥 Download Classificação (CSV)",
+        data=csv,
+        file_name="classificacao_litologica.csv",
+        mime="text/csv"
+    )

@@ -1,9 +1,10 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-import pandas as pd
 import lasio
 from io import StringIO
 from PIL import Image
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Evitar erro de imagem grande
 Image.MAX_IMAGE_PIXELS = None
@@ -125,12 +126,168 @@ def plot_well_logs(df):
     finally:
         plt.close(fig)
 
+def plot_interactive_logs(df, depth_col, selected_curves, depth_range, mode):
+    """Cria visualização interativa com Plotly"""
+
+    # Filtrar dados por profundidade
+    df_filtered = df[(df[depth_col] >= depth_range[0]) & (df[depth_col] <= depth_range[1])]
+
+    if mode == "Plotly Interativo":
+        # Criar subplots
+        n_curves = len(selected_curves)
+        fig = make_subplots(
+            rows=1, cols=n_curves,
+            shared_yaxes=True,
+            subplot_titles=selected_curves,
+            horizontal_spacing=0.05
+        )
+
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
+
+        for i, curve in enumerate(selected_curves):
+            if curve in df_filtered.columns:
+                fig.add_trace(
+                    go.Scatter(
+                        x=df_filtered[curve],
+                        y=df_filtered[depth_col],
+                        mode='lines',
+                        name=curve,
+                        line=dict(color=colors[i % len(colors)], width=2),
+                        hovertemplate=f'<b>{curve}</b><br>Valor: %{{x:.2f}}<br>Depth: %{{y:.2f}}<extra></extra>'
+                    ),
+                    row=1, col=i+1
+                )
+
+                # Configurar eixo x
+                fig.update_xaxes(title_text=curve, row=1, col=i+1, showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        # Configurar layout
+        fig.update_yaxes(title_text="Profundidade (m)", autorange="reversed", row=1, col=1, showgrid=True, gridwidth=1, gridcolor='LightGray')
+
+        fig.update_layout(
+            height=800,
+            showlegend=False,
+            plot_bgcolor='white',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(size=12),
+            hovermode='y unified',
+            margin=dict(l=50, r=50, t=80, b=50),
+            dragmode='zoom',  # Modo padrão: zoom
+            modebar=dict(
+                bgcolor='rgba(255,255,255,0.7)',
+                color='#02ab21',
+                activecolor='#ff8c00'
+            )
+        )
+
+        # Configuração completa para interatividade
+        config = {
+            'displayModeBar': True,
+            'displaylogo': False,
+            'modeBarButtonsToAdd': ['drawopenpath', 'eraseshape'],
+            'modeBarButtonsToRemove': [],
+            'toImageButtonOptions': {
+                'format': 'png',
+                'filename': 'perfil_geofisico',
+                'height': 1200,
+                'width': 1600,
+                'scale': 2
+            },
+            'scrollZoom': True  # Zoom com scroll do mouse
+        }
+
+        st.plotly_chart(fig, use_container_width=True, config=config)
+
+    else:
+        # Modo matplotlib (original)
+        plot_well_logs(df)
+
 def app():
-    st.title("Visualização de Perfis Geofísicos")
+    # Controles na sidebar
+    with st.sidebar:
+        st.markdown("---")
+        st.subheader("⚙️ Controles de Visualização")
+
+        if 'well_data' not in st.session_state or st.session_state['well_data'] is None:
+            st.warning("⚠️ Carregue dados primeiro")
+            return
+
+        df = st.session_state['well_data']
+        depth_col = get_depth_column(df)
+
+        if not depth_col:
+            st.error("Coluna de profundidade não encontrada")
+            return
+
+        # Modo de visualização
+        mode = st.radio(
+            "Modo de Visualização",
+            ["Plotly Interativo", "Matplotlib Clássico"],
+            index=0
+        )
+
+        # Seletor de curvas
+        available_curves = [col for col in df.columns if col != depth_col]
+
+        st.markdown("**Selecione as Curvas:**")
+        selected_curves = st.multiselect(
+            "Curvas para plotar",
+            available_curves,
+            default=available_curves[:min(4, len(available_curves))],
+            label_visibility="collapsed"
+        )
+
+        # Intervalo de profundidade
+        st.markdown("**Intervalo de Profundidade:**")
+        min_depth = float(df[depth_col].min())
+        max_depth = float(df[depth_col].max())
+
+        depth_range = st.slider(
+            "Range (m)",
+            min_value=min_depth,
+            max_value=max_depth,
+            value=(min_depth, max_depth),
+            label_visibility="collapsed"
+        )
+
+        # Informações
+        st.markdown("---")
+        st.metric("Total de Curvas", len(available_curves))
+        st.metric("Curvas Selecionadas", len(selected_curves))
+        st.metric("Intervalo (m)", f"{depth_range[1] - depth_range[0]:.1f}")
+
+        st.markdown("---")
+
+    # Área principal
+    st.title("📊 Visualização de Perfis Geofísicos")
 
     if 'well_data' not in st.session_state or st.session_state['well_data'] is None:
-        st.warning("Nenhum dado foi carregado. Vá para a página de Importação.")
+        st.warning("⚠️ Nenhum dado foi carregado. Vá para a página de Importação.")
         return
 
-    df = st.session_state['well_data']
-    plot_well_logs(df)
+    if not selected_curves:
+        st.info("ℹ️ Selecione pelo menos uma curva na sidebar para visualizar")
+        return
+
+    # Mostrar instruções interativas se modo Plotly
+    if mode == "Plotly Interativo":
+        st.markdown("""
+        <div style='background: linear-gradient(90deg, #e3f2fd 0%, #fff8e1 100%);
+                    padding: 15px;
+                    border-radius: 10px;
+                    border-left: 4px solid #02ab21;
+                    margin-bottom: 20px;'>
+            <h4 style='margin: 0 0 10px 0; color: #02ab21;'>🖱️ Controles Interativos do Mouse</h4>
+            <div style='display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 13px;'>
+                <div><b>🔍 Zoom In:</b> Clique e arraste para selecionar área</div>
+                <div><b>↔️ Pan:</b> Segure Shift + Clique e arraste</div>
+                <div><b>🔎 Zoom Out:</b> Duplo clique no gráfico</div>
+                <div><b>📊 Detalhes:</b> Passe o mouse sobre a linha</div>
+                <div><b>🏠 Reset:</b> Clique no ícone "Home" no canto</div>
+                <div><b>💾 Salvar:</b> Clique no ícone de câmera</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Plotar
+    plot_interactive_logs(df, depth_col, selected_curves, depth_range, mode)
